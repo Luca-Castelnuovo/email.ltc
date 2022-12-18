@@ -18,7 +18,7 @@ services:
       - NET_BIND_SERVICE
     volumes:
       - /opt/postal/config:/config
-      # - /etc/letsencrypt/archive/postal.example.com:/certs
+      - /etc/letsencrypt:/etc/letsencrypt
 
   worker:
     image: ghcr.io/postalserver/postal:{{version}}
