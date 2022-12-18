@@ -1,0 +1,228 @@
+#!/bin/bash
+
+set -e
+
+ORIGINAL_SCRIPT="$( realpath "${BASH_SOURCE[0]}" )"
+ROOT_DIR=$( cd "$( dirname "${ORIGINAL_SCRIPT}" )/.." && pwd )
+
+run() {
+    eval $@
+}
+
+run-docker-compose() {
+    if [ ! -f "docker-compose.yml" ]; then
+        echo 'No docker-compose.yml file available. Generating using latest available version...'
+        latest_version=`get-latest-postal-version`
+        echo "Latest verison is $latest_version"
+        set-postal-version $latest_version
+    fi
+
+    eval "docker compose -p postal $@"
+}
+
+set-postal-version() {
+    desired_version=$1;
+
+    # Create a backup of the previous docker-compose file
+    if [ -f docker-compose.yml ]; then
+        cp docker-compose.yml docker-compose.backup.yml
+    fi
+
+    # Copy the new one
+    cp templates/docker-compose.yml docker-compose.yml
+
+    # Replace the version string
+    sed -i "s/{{version}}/$desired_version/" docker-compose.yml
+    # sed -i '' "s/{{version}}/$desired_version/g" docker-compose.yml # PR 6
+}
+
+get-latest-postal-version() {
+    if ! command -v curl &> /dev/null
+    then
+        echo "curl could not be found. Install curl before continuing." > /dev/stderr
+        return 1
+    fi
+
+    if ! command -v jq &> /dev/null
+    then
+        echo "jq could not be found. Install jq before continuing." > /dev/stderr
+        return 1
+    fi
+
+    local response=`curl -s https://api.github.com/repos/postalserver/postal/releases/latest`
+
+    local error=`echo $response | jq -r '.message'`
+    if [[ "$error" == *"rate limit exceeded"* ]]; then
+        echo "GitHub API rate limit exceeded. Try again later." > /dev/stderr
+        return 1
+    fi
+
+    local latest_version=`echo $response | jq -r '.tag_name'`
+    if [ "$latest_version" == "" ] || [ "$latest_version" == "null" ]; then
+        echo "Could not get latest version of Postal from GitHub. Make sure you" > /dev/stderr
+        echo "are connected to the internet and GitHub is available." > /dev/stderr
+        return 1
+    fi
+
+    echo $latest_version
+}
+
+# Enter the root directory
+cd $ROOT_DIR
+
+# Run the right command
+case "$1" in
+    set-version)
+        if [ "$2" == "" ]; then
+            echo 'version is missing.'
+            echo
+            echo 'usage: postal set-version [x.x.x]'
+            exit 1
+        fi
+
+        set-postal-version "$2"
+        ;;
+
+    start)
+        run-docker-compose "up -d ${@:2}"
+        ;;
+
+    stop)
+        run-docker-compose "down"
+        ;;
+
+    status)
+        run-docker-compose "ps"
+        ;;
+
+    restart)
+        run-docker-compose "restart"
+        ;;
+
+    logs)
+        run-docker-compose "logs ${@:2}"
+        ;;
+
+    dc)
+        run-docker-compose "${@:2}"
+        ;;
+
+    bash)
+        if [ "$2" == "" ]; then
+            echo 'must provide service name'
+            exit 1
+        fi
+
+        run-docker-compose "exec $2 bash"
+        ;;
+
+    initialize)
+        run-docker-compose "pull"
+        run-docker-compose "run --rm runner postal initialize"
+        ;;
+
+    upgrade)
+        run "git pull origin main"
+
+        # Get the latest verison of Postal which we want to upgrade
+        # to if no other version is provided.
+        if [ "$2" == "" ]; then
+            echo 'No version specified, using latest available version...'
+            latest_version=`get-latest-postal-version`
+            set-postal-version $latest_version
+        else
+            latest_version="$2"
+        fi
+
+        echo "Upgrading to $latest_version"
+
+        run-docker-compose "pull"
+        run-docker-compose "run --rm runner postal upgrade"
+        run-docker-compose "up -d"
+        ;;
+
+    upgrade-db)
+        run-docker-compose "run --rm runner postal upgrade"
+        ;;
+
+    console)
+        run-docker-compose "run --rm runner postal console"
+        ;;
+
+    make-user)
+        run-docker-compose "run --rm runner postal make-user"
+        ;;
+
+    default-dkim-record)
+        run-docker-compose "run --rm runner postal default-dkim-record"
+        ;;
+
+    test-app-smtp)
+        run-docker-compose "run --rm runner postal test-app-smtp"
+        ;;
+
+    bootstrap)
+        hostname=$2
+        output_path=$3
+
+        if [ "$output_path" == "" ]; then
+            output_path=/opt/postal/config
+        fi
+
+        if [ "$hostname" == "" ]; then
+            echo 'hostname is missing.'
+            echo
+            echo 'usage: ./bin/postal postal.mydomain.com [path/to/config]'
+            exit 1
+        fi
+
+        # Get the latest verison of Postal as the starting version for a
+        # new installation.
+        latest_version=`get-latest-postal-version`
+        echo "Latest version is: $latest_version"
+        set-postal-version $latest_version
+
+        mkdir -p $output_path
+
+        if [ ! -f $output_path/postal.yml ]; then
+            echo "=> Creating $output_path/postal.yml"
+            cp examples/postal.yml $output_path/postal.yml
+            rails_secret_key=`openssl rand -hex 128 | tr -d '\n'`
+            sed -i "s/secretkey/$rails_secret_key/" $output_path/postal.yml
+            sed -i "s/postal.example.com/$hostname/" $output_path/postal.yml
+        fi
+
+        if [ ! -f $output_path/signing.key ]; then
+            echo '=> Creating signing private key'
+            openssl genrsa -out $output_path/signing.key 1024
+            chmod 644 $output_path/signing.key
+        fi
+
+        ;;
+    *)
+        echo "Usage: postal [command]"
+        echo
+        echo "Running postal:"
+        echo
+        echo -e " * \e[35mstart\e[0m - start Postal"
+        echo -e " * \e[35mstop\e[0m - stop Postal"
+        echo -e " * \e[35mrestart\e[0m - restart Postal"
+        echo -e " * \e[35mstatus\e[0m - view current process status"
+        echo -e " * \e[35mlogs [service]\e[0m - view logs from services"
+        echo
+        echo "Setup/upgrade tools:"
+        echo
+        echo -e " * \e[32minitialize\e[0m - create and load the DB schema"
+        echo -e " * \e[32mupgrade\e[0m - upgrade the DB schema"
+        echo
+        echo "Other tools:"
+        echo
+        echo -e " * \e[34mversion\e[0m - show the current Postal version"
+        echo -e " * \e[34mmake-user\e[0m - create a new global admin user"
+        echo -e " * \e[34mdefault-dkim-record\e[0m - display the default DKIM record"
+        echo -e " * \e[34mconsole\e[0m - open an interactive console"
+        echo -e " * \e[34mtest-app-smtp\e[0m - send a test message through Postal"
+        echo -e " * \e[34mbootstrap hostname [path]\e[0m - create a new set of config"
+        echo -e " * \e[34mbash [service]\e[0m - access a bash console for a running process"
+        echo
+esac
