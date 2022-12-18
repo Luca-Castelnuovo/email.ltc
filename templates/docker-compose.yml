@@ -8,6 +8,7 @@ services:
     network_mode: host
     volumes:
       - /opt/postal/config:/config
+      - /etc/letsencrypt:/etc/letsencrypt
 
   smtp:
     image: ghcr.io/postalserver/postal:{{version}}
@@ -27,6 +28,7 @@ services:
     network_mode: host
     volumes:
       - /opt/postal/config:/config
+      - /etc/letsencrypt:/etc/letsencrypt
 
   cron:
     image: ghcr.io/postalserver/postal:{{version}}
@@ -35,6 +37,7 @@ services:
     network_mode: host
     volumes:
       - /opt/postal/config:/config
+      - /etc/letsencrypt:/etc/letsencrypt
 
   requeuer:
     image: ghcr.io/postalserver/postal:{{version}}
@@ -43,6 +46,7 @@ services:
     network_mode: host
     volumes:
       - /opt/postal/config:/config
+      - /etc/letsencrypt:/etc/letsencrypt
 
   runner:
     profiles: [ "tools" ]
@@ -52,3 +56,4 @@ services:
     network_mode: host
     volumes:
       - /opt/postal/config:/config
+      - /etc/letsencrypt:/etc/letsencrypt
