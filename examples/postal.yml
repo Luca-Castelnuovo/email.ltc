@@ -16,9 +16,9 @@ web_server:
 smtp_server:
   # Specify configuration to the Postal SMTP server
   port: 25
-  #tls_enabled: true
-  #tls_certificate_path: /certs/fullchain1.pem
-  #tls_private_key_path: /certs/privkey1.pem
+  tls_enabled: false
+  tls_certificate_path: /etc/letsencrypt/live/postal.example.com/fullchain.pem
+  tls_private_key_path: /etc/letsencrypt/live/postal.example.com/privkey.pem
 
 logging:
   # Specify options for the logging
