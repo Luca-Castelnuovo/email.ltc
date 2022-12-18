@@ -44,9 +44,9 @@ sudo certbot certonly -d postal.example.com \
     --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
     --non-interactive --agree-tos \
     --email email@domain.com
+sudo chmod -r 0755 /etc/letsencrypt
 
-# TODO: create sed command
-nano /opt/postal/config/postal.yml # Update line 19
+sed -i "s/tls_enabled: false/tls_enabled: true/" /opt/postal/config/postal.yml
 ### end TLS SMTP setup
 
 postal start
