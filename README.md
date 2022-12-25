@@ -50,4 +50,7 @@ sed -i "s/tls_enabled: false/tls_enabled: true/" /opt/postal/config/postal.yml
 ### end TLS SMTP setup
 
 postal start
+
+# test tls setup
+openssl s_client -starttls smtp -connect <server-ip>:25
 ```
